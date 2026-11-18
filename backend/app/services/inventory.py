@@ -80,9 +80,9 @@ def refresh_status(db: Session, row: Inventory) -> None:
         title = f"Stock {status.upper()}: {row.blood_group} at {bank.name}"
         body = f"{row.units} units left" + (f" · ~{cover} days of cover" if cover is not None else "") + ". Consider rallying donors."
         level = "critical" if status == "critical" else "warning"
-        notify_bank_staff(db, bank.id, "stock", title, body, level, "/app/blood_bank")
+        notify_bank_staff(db, bank.id, "stock", title, body, level, "/bank")
         for hid in db.scalars(select(Hospital.id).where(Hospital.blood_bank_id == bank.id)):
-            notify_hospital_staff(db, hid, "stock", title, body, level, "/app/hospital")
+            notify_hospital_staff(db, hid, "stock", title, body, level, "/hospital")
     row.last_status = status
 
 
@@ -115,7 +115,7 @@ def rally(db: Session, bank: BloodBank, group: str, today: date, radius_km: floa
         d = r.item
         notify(db, d.user_id, "stock_rally", f"{bank.name} is low on {group}",
                f"You're eligible and {format_distance(r.distance_km)} away. A walk-in donation this week would help patients who depend on regular transfusions.",
-               "warning", "/app/donor")
+               "warning", "/donor")
     row.last_rally_at = now
     db.flush()
     return [{"donor_id": r.item.id, "name": r.item.name, "phone": r.item.phone, "distance": format_distance(r.distance_km)} for r in ranked]

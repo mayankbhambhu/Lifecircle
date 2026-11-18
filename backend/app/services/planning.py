@@ -66,10 +66,10 @@ def fill_slots(db: Session, appt: Appointment) -> dict:
         if slot == "confirmed":
             notify(db, donor_user, "assignment", f"You're {first_name(patient.name)}'s donor on {when}",
                    f"Fair rotation picked you this cycle ({choice.explanation}). Please confirm or cancel early so we can plan.",
-                   "info", "/app/donor")
+                   "info", "/donor")
         else:
             notify(db, donor_user, "assignment", f"You're backup for {first_name(patient.name)} on {when}",
-                   "You'll only be needed if the confirmed donor can't make it.", "info", "/app/donor")
+                   "You'll only be needed if the confirmed donor can't make it.", "info", "/donor")
     return {"picked": picked, "ranked": result.ranked, "ineligible": result.ineligible}
 
 
@@ -92,9 +92,9 @@ def plan_next(db: Session, patient: Patient, today: date) -> Appointment:
     notify(db, patient.family_user_id, "planned", f"Next transfusion planned: {when:%d %b}",
            "Confirmed and backup donors have been chosen from your circle." if outcome["picked"].get("backup")
            else "We couldn't fill both slots from your circle – the blood bank has been told.",
-           "warning" if overdue or not outcome["picked"].get("confirmed") else "success", "/app/patient")
+           "warning" if overdue or not outcome["picked"].get("confirmed") else "success", "/patient")
     notify_bank_staff(db, appt.blood_bank_id, "queue", f"Planned request: {pname} ({patient.blood_group}) on {when:%d %b}",
-                      "A new planned transfusion is waiting for slot approval.", "info", "/app/blood_bank")
+                      "A new planned transfusion is waiting for slot approval.", "info", "/bank")
     return appt
 
 
@@ -114,9 +114,9 @@ def replace_confirmed(db: Session, appt: Appointment, lost: Assignment, why: str
         db.flush()
         out["promoted"] = backup.donor_id
         notify(db, backup.donor.user_id, "promoted", f"You're now the donor for {first_name(patient.name)}",
-               f"The confirmed donor can't donate. Can you make it on {appt.date:%a %d %b}? Please confirm.", "warning", "/app/donor")
+               f"The confirmed donor can't donate. Can you make it on {appt.date:%a %d %b}? Please confirm.", "warning", "/donor")
         notify(db, patient.family_user_id, "cancellation", f"{donor_label} can't donate – {short_name(backup.donor.name)} stepped in",
-               "Your backup donor was promoted automatically and a new backup is being chosen.", "warning", "/app/patient")
+               "Your backup donor was promoted automatically and a new backup is being chosen.", "warning", "/patient")
         filled = fill_slots(db, appt)
         if filled["picked"].get("backup"):
             out["new_backup"] = filled["picked"]["backup"].donor_id
@@ -127,7 +127,7 @@ def replace_confirmed(db: Session, appt: Appointment, lost: Assignment, why: str
         out["urgent_request_id"] = req.id
         notify(db, patient.family_user_id, "cancellation", f"{donor_label} can't donate – Urgent mode started",
                "We're alerting your circle first, then nearby verified donors. The blood bank is watching this request.",
-               "critical", "/app/patient")
+               "critical", "/patient")
     return out
 
 
@@ -148,9 +148,9 @@ def cancel_assignment(db: Session, a: Assignment, reason: str) -> dict:
             out["new_backup"] = filled["picked"]["backup"].donor_id
         notify(db, patient.family_user_id, "cancellation", f"Backup donor {short_name(a.donor.name)} cancelled",
                "A replacement backup was chosen from your circle." if out["new_backup"] else "No other eligible backup in your circle this cycle.",
-               "info" if out["new_backup"] else "warning", "/app/patient")
+               "info" if out["new_backup"] else "warning", "/patient")
     notify_bank_staff(db, appt.blood_bank_id, "cancellation", f"{a.donor.name} cancelled ({a.slot}) for {patient.name}",
-                      reason or "No reason given", "warning", "/app/blood_bank")
+                      reason or "No reason given", "warning", "/bank")
     return out
 
 
@@ -169,7 +169,7 @@ def complete_transfusion(db: Session, appt: Appointment, today: date) -> Appoint
     db.flush()
     nxt = plan_next(db, patient, today)
     notify_hospital_staff(db, patient.hospital_id, "planned", f"{patient.name}: next transfusion {nxt.date:%d %b}",
-                          "Cycle rolled forward automatically.", "info", "/app/hospital")
+                          "Cycle rolled forward automatically.", "info", "/hospital")
     return nxt
 
 
@@ -196,7 +196,7 @@ def run_reminders(db: Session, today: date) -> int:
             if conf and back and conf.status == "pending" and back.status == "attending":
                 conf.slot, back.slot = "backup", "confirmed"
                 notify(db, patient.family_user_id, "swap", "Donor swap for tomorrow",
-                       f"{short_name(conf.donor.name)} hasn't confirmed, so {short_name(back.donor.name)} (already confirmed) takes the slot.", "warning", "/app/patient")
+                       f"{short_name(conf.donor.name)} hasn't confirmed, so {short_name(back.donor.name)} (already confirmed) takes the slot.", "warning", "/patient")
         for a in list(appt.assignments):
             if a.status not in ACTIVE:
                 continue
@@ -207,7 +207,7 @@ def run_reminders(db: Session, today: date) -> int:
                 except IntegrityError:
                     continue  # already sent
                 title, body = reminder_text(kind, first_name(patient.name), appt.date, hospital)
-                notify(db, a.donor.user_id, "reminder", title, body, "info", "/app/donor")
+                notify(db, a.donor.user_id, "reminder", title, body, "info", "/donor")
                 sent += 1
     return sent
 

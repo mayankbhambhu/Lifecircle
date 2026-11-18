@@ -1,5 +1,7 @@
 # LifeCircle: capstone presentation notes
 
+The app runs on a phone in **Expo Go** (React Native, Expo SDK 58) and talks to the FastAPI backend over Wi-Fi. See the README for setup.
+
 ## 1. The real problem, and why it matters
 
 A child with **thalassemia major** needs a red-cell transfusion every **2–4 weeks for life**. In India, most of these patients depend on *replacement donors* that their own family arranges, so every cycle starts the same scramble again:
@@ -96,10 +98,10 @@ The loop is closed both ways: logging *Donated* adds +1 unit, and completing a t
 | Method | Security details |
 |---|---|
 | Phone **OTP** | 6 digits, HMAC-SHA256 hashed at rest, 5-minute expiry, 5 attempts, 30 s resend cooldown, single use |
-| Email **magic link** | 256-bit random token, hashed at rest, 15-minute expiry, single use |
-| **Google** | ID token verified with Google (`aud` must match our client id, the email must be verified). An existing email account is linked automatically |
+| Email **magic link** | 256-bit random token, hashed at rest, 15-minute expiry, single use. The link opens the app (`lifecircle://magic`, or `exp://…/--/magic` in Expo Go). The server only accepts the app's own schemes as link targets, so nobody can redirect a sign-in link to their own website |
+| **Google** | ID token verified with Google (`aud` must be one of our client ids, the email must be verified). An existing email account is linked automatically. The native Google SDK isn't part of Expo Go, so the demo uses a simulated chooser; a development build uses the real one |
 
-Every method ends the same way. A known user gets a JWT, and the app routes by role to `/app/patient`, `/app/donor`, `/app/blood_bank` or `/app/hospital`. A new identity gets a 30-minute *onboarding token* and picks **Patient family** or **Donor**. **Blood bank and hospital accounts are invite-only**, so nobody can self-register into a role that sees phone numbers.
+Every method ends the same way. A known user gets a JWT, kept in the phone's secure keychain (expo-secure-store), and the app opens that role's tab set: `/patient`, `/donor`, `/bank` or `/hospital`. Each tab group has a role guard, so a donor can't navigate into the blood bank tabs. A new identity gets a 30-minute *onboarding token* and picks **Patient family** or **Donor**. **Blood bank and hospital accounts are invite-only**, so nobody can self-register into a role that sees phone numbers.
 
 Every route uses `Depends(require_roles(...))`, and every resource is checked for ownership. A family can only see its own patients, staff only their own bank's requests, and a donor only their own slots and alerts. Requests for another user's records return **404**, not 403, so the API doesn't even confirm that the record exists.
 
@@ -115,7 +117,7 @@ All donor data passes through one function, `privacy.donor_card(donor, viewer)`:
 | Medical deferral reasons | – (only "Resting until 3 Jan") | – | ✓ | ✓ |
 | Patient name in an urgent alert | n/a | n/a | ✓ | only if the donor is in that patient's circle |
 
-* The phone field is **omitted**, not masked, so it can't leak through the browser's network tab. A test scans the entire family and hospital API responses for every donor phone number.
+* The phone field is **omitted**, not masked, so it never reaches the family's or hospital's phone at all, not even in the raw network response. A test scans the entire family and hospital API responses for every donor phone number.
 * Each staff view of contact details writes a row to the **privacy audit log**, which is visible in the blood bank's dashboard.
 
 ## 6. What this doesn't do (scope)
@@ -124,27 +126,29 @@ All donor data passes through one function, `privacy.donor_card(donor, viewer)`:
 * No cross-matching, no extended phenotype matching (Rh C/c/E/e, Kell) and no iron-chelation or ferritin tracking.
 * It does not replace the blood bank's LIS or inventory system. Stock levels are entered by staff (an integration point).
 * There is no real SMS, WhatsApp or e-mail gateway in the demo. OTPs and links show up in a "demo inbox". `ConsoleSender` is the plug-in point.
+* There are no OS push notifications. Expo Go no longer supports remote push on Android, so the app polls for in-app alerts every 12 s and shows them as banners with haptics. A development build with expo-notifications is the production path.
+* Real Google sign-in needs a development build, because Expo Go can't load the native Google SDK.
 * Distances are straight-line, not travel time. There is no live traffic or routing.
 * There is no transport booking, payment, or movement of blood between cities.
 * Staff accounts are seeded. Admin tools for inviting staff are out of scope.
 * Background jobs run in-process (every 60 s). At scale they would move to a worker queue.
 
-## 7. A 5-minute demo script
+## 7. A 5-minute demo script (on a phone in Expo Go)
 
-1. **Landing page**: the problem, the two mechanics, the four roles, the privacy matrix and the scope.
-2. **Login → Patient family (Neha)**: next transfusion **in 9 days**, Amit *confirmed*, Priya *backup*. Open **Rotation** to show the fair 6-cycle forecast and the scoring weights. Open **Circle** to show eligibility labels with no phone numbers anywhere.
-3. **Login → Donor (Priya)**: there's a red banner for an urgent request **2.4 km from you**. Tap **I can donate**, and she wins the request.
-4. **Login → Blood bank (Dr. Meera)**:
-   * In the **Queue**, Ishaan's request is *Filled*. The radar shows who was alerted and at what distance, with full phone numbers. Aarav's backup slot was released automatically because Priya donated elsewhere.
-   * In the **Daily log**, log Ayesha as *Donated* with Hb 13.4. Stock goes up by one.
-   * Back in the **Queue**, press **Done** on Zoya's transfusion. The next cycle is planned instantly, with the next donor picked by rotation.
-   * In **Stock**, O- and AB- are critical. Press **Rally donors** to see who was notified.
-   * In the **Privacy audit**, every contact view is logged.
-5. **Login → Hospital (Ravi)**: patient coverage, the stock shortage banner, and **Urgent** to raise a request. Optionally switch to dark mode.
-6. Back on the login page, show **Phone OTP**, **Email link** and **Google**, plus onboarding with the invite-only staff roles.
+1. **Welcome slides**: the problem, Planned mode, Urgent mode, and privacy. Swipe through them, or tap Skip.
+2. **Login → Patient family (Neha)**: the next transfusion is **in 9 days**, shown with a countdown ring. Amit is *confirmed* and Priya is the *backup*. Open **Rotation** to show the fair 6-cycle forecast and the scoring weights. Open **Circle** to show eligibility labels with no phone numbers anywhere. You can share the invite code with the native share sheet.
+3. **Avatar → Sign out → Donor (Priya)**: a red banner shows an urgent request **2.4 km from you**. Open **Alerts** and tap **I can donate**. She wins, and you feel the haptic.
+4. **Blood bank (Dr. Meera)**:
+   * In the **Queue**, Ishaan's request is *Filled*. The radar shows who was alerted and at what distance; tap a phone number to call. Aarav's backup slot was released automatically, because Priya donated elsewhere.
+   * In the **Daily log**, enter Hb 13.4 for Ayesha and tap **Donated**. Stock goes up by one.
+   * Back in the **Queue**, tap **Transfusion done** on Zoya. The next cycle is planned instantly, with the next donor picked by rotation.
+   * In **Stock**, O- and AB- are critical. Tap **Rally** to see who was notified.
+   * In **Donors**, tap the audit icon: every contact view is logged.
+5. **Hospital (Ravi)**: patient coverage, the stock shortage banner, and **Urgent request**.
+6. Show the login methods: **Phone OTP** (the code arrives as a demo SMS), **Email** (a link that opens the app), and **Google**. Then onboarding, where the staff roles are invite-only.
 
 ## 8. Running the tests
 
 ```bash
-cd backend && python -m pytest -q      # 39 passed
+cd backend && python -m pytest -q      # 40 passed
 ```

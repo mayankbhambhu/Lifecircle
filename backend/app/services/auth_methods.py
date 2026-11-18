@@ -41,14 +41,14 @@ def normalize_phone(raw: str) -> str:
     if len(digits) == 10:
         digits = "91" + digits
     if not (11 <= len(digits) <= 15):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Enter a valid mobile number")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Enter a valid mobile number")
     return "+" + digits
 
 
 def normalize_email(raw: str) -> str:
     email = (raw or "").strip().lower()
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Enter a valid email address")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Enter a valid email address")
     return email
 
 
@@ -110,16 +110,29 @@ def verify_otp(db: Session, raw_phone: str, code: str) -> str:
 
 
 # ---------------------------------------------------------------- magic link
-def request_magic_link(db: Session, raw_email: str) -> dict:
+def safe_app_link(redirect: str | None) -> str:
+    """Where the emailed link should open. Only our own app scheme is trusted; Expo Go's
+    exp:// links are allowed in demo mode so the flow works without a custom build."""
+    if not redirect:
+        return settings.app_link
+    allowed = ("lifecircle://",) + (("exp://", "exps://") if settings.demo_mode else ())
+    if not redirect.startswith(allowed) or any(c in redirect for c in "?#"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Unsupported sign-in link target")
+    return redirect
+
+
+def request_magic_link(db: Session, raw_email: str, redirect: str | None = None) -> dict:
     email = normalize_email(raw_email)
+    base = safe_app_link(redirect)
     token = secrets.token_urlsafe(32)
     db.add(MagicLink(email=email, token_hash=_hash(token), expires_at=utcnow() + timedelta(seconds=settings.magic_ttl_seconds)))
     db.commit()
-    link = f"{settings.frontend_url}/auth/magic?token={token}"
+    link = f"{base}?token={token}"
     sender.send_email(email, "Your LifeCircle sign-in link", f"Tap to sign in (valid 15 minutes, single use):\n{link}")
     out = {"sent": True, "email": email, "expires_in": settings.magic_ttl_seconds}
     if settings.demo_mode:
-        out["dev_link"] = f"/auth/magic?token={token}"
+        out["dev_link"] = link
+        out["dev_token"] = token
     return out
 
 
@@ -136,7 +149,7 @@ def verify_magic_link(db: Session, token: str) -> str:
 
 # ---------------------------------------------------------------- Google
 def verify_google_credential(credential: str) -> dict:
-    if not settings.google_client_id:
+    if not settings.google_client_ids:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google sign-in is not configured on this server")
     url = "https://oauth2.googleapis.com/tokeninfo?" + urllib.parse.urlencode({"id_token": credential})
     try:
@@ -144,7 +157,7 @@ def verify_google_credential(credential: str) -> dict:
             info = json.loads(resp.read())
     except Exception:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Google could not verify this sign-in")
-    if info.get("aud") != settings.google_client_id:
+    if info.get("aud") not in settings.google_client_ids:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Google token was issued for a different app")
     if str(info.get("email_verified")).lower() != "true":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Google email is not verified")

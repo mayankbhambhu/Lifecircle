@@ -93,9 +93,9 @@ def confirm(assignment_id: int, user: User = Depends(DonorRole), db: Session = D
     a.status = "attending"
     p = a.appointment.patient
     notify(db, p.family_user_id, "confirmed", f"{short_name(d.name)} confirmed for {a.appointment.date:%d %b}",
-           f"Your {a.slot} donor confirmed attendance.", "success", "/app/patient")
+           f"Your {a.slot} donor confirmed attendance.", "success", "/patient")
     notify_bank_staff(db, a.appointment.blood_bank_id, "confirmed", f"{d.name} confirmed ({a.slot}) for {p.name}",
-                      f"{a.appointment.date:%d %b}", "success", "/app/blood_bank")
+                      f"{a.appointment.date:%d %b}", "success", "/bank")
     db.commit()
     return {"ok": True, "status": a.status}
 
@@ -162,6 +162,6 @@ def join(body: JoinBody, user: User = Depends(DonorRole), db: Session = Depends(
     d = me(db, user)
     p = join_circle(db, d, body.code, body.relation)
     notify(db, p.family_user_id, "circle", f"{short_name(d.name)} joined {p.name.split()[0]}'s circle",
-           f"{d.blood_group} donor. They'll be included in fair rotation from the next eligible cycle.", "success", "/app/patient")
+           f"{d.blood_group} donor. They'll be included in fair rotation from the next eligible cycle.", "success", "/patient")
     db.commit()
     return {"ok": True, "patient": p.name.split()[0]}

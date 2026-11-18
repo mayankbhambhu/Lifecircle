@@ -29,7 +29,7 @@ def test_otp_login_existing_user_routes_by_role(client):
     bad = client.post("/api/auth/otp/verify", json={"phone": "9800000003", "code": "000000" if code != "000000" else "111111"})
     assert bad.status_code == 400 and "attempt" in bad.json()["detail"]
     ok = client.post("/api/auth/otp/verify", json={"phone": "+91 98000 00003", "code": code}).json()
-    assert ok["status"] == "signed_in" and ok["user"]["role"] == "blood_bank" and ok["home"] == "/app/blood_bank"
+    assert ok["status"] == "signed_in" and ok["user"]["role"] == "blood_bank" and ok["home"] == "/bank"
     # code is single use
     assert client.post("/api/auth/otp/verify", json={"phone": "9800000003", "code": code}).status_code == 400
 
@@ -223,3 +223,12 @@ def test_scheduler_tick_sends_reminders_once(client, as_role):
     first = client.post("/api/system/tick", headers=bank).json()["reminders_sent"]
     second = client.post("/api/system/tick", headers=bank).json()["reminders_sent"]
     assert second == 0 and first >= 0
+
+
+def test_magic_link_opens_the_app_and_rejects_foreign_targets(client):
+    ok = client.post("/api/auth/magic/request", json={"email": "a@example.com", "redirect": "exp://192.168.1.4:8081/--/magic"}).json()
+    assert ok["dev_link"].startswith("exp://192.168.1.4:8081/--/magic?token=")
+    default = client.post("/api/auth/magic/request", json={"email": "b@example.com"}).json()
+    assert default["dev_link"].startswith("lifecircle://magic?token=")
+    bad = client.post("/api/auth/magic/request", json={"email": "c@example.com", "redirect": "https://evil.example/steal"})
+    assert bad.status_code == 422

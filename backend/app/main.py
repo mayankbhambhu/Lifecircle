@@ -1,6 +1,6 @@
 """LifeCircle API.
 
-Run:  uvicorn app.main:app --reload      (from the backend/ folder)
+Run:  uvicorn app.main:app --reload --host 0.0.0.0     (from the backend/ folder)
 Docs: http://localhost:8000/docs
 """
 from __future__ import annotations
@@ -9,12 +9,8 @@ import asyncio
 import contextlib
 import logging
 from datetime import date
-from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import SessionLocal
@@ -53,8 +49,6 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="LifeCircle API", version="1.0.0", lifespan=lifespan,
               description="Proactive blood-donation scheduling for patients who need regular transfusions.")
-app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_url, "http://localhost:5173", "http://127.0.0.1:5173"],
-                   allow_methods=["*"], allow_headers=["*"])
 
 for r in (auth.router, family.router, donor.router, bank.router, hospital.router, common.router):
     app.include_router(r)
@@ -64,15 +58,3 @@ for r in (auth.router, family.router, donor.router, bank.router, hospital.router
 def health():
     return {"ok": True}
 
-
-# Serve the built frontend (frontend/dist) from the same origin when it exists.
-DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-if DIST.exists():
-    app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
-
-    @app.get("/{path:path}", include_in_schema=False)
-    def spa(path: str):
-        f = DIST / path
-        if path and f.is_file() and DIST in f.resolve().parents:
-            return FileResponse(f)
-        return FileResponse(DIST / "index.html")

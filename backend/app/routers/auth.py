@@ -5,7 +5,7 @@
     POST /google  (or /google/demo in demo mode)
                      │
                      ▼
-     existing user ─► {status: signed_in, token, home: "/app/<role>"}
+     existing user ─► {status: signed_in, token, home: "/patient" | "/donor" | "/bank" | "/hospital"}
      new identity  ─► {status: needs_onboarding, onboarding_token}
                           └► POST /onboard {role: patient|donor, ...}
 """
@@ -56,7 +56,7 @@ def resolve(db: Session, method: str, *, phone=None, email=None, google_sub=None
 def auth_config():
     return {
         "demo_mode": settings.demo_mode,
-        "google_client_id": settings.google_client_id or None,
+        "google_enabled": bool(settings.google_client_ids),
         "methods": ["otp", "magic_link", "google"],
         "self_service_roles": list(SELF_SERVICE_ROLES),
     }
@@ -84,6 +84,7 @@ def otp_verify(body: OtpVerify, db: Session = Depends(get_db)):
 
 class MagicRequest(BaseModel):
     email: str
+    redirect: str | None = None  # e.g. Linking.createURL("magic") from the app
 
 
 class MagicVerify(BaseModel):
@@ -92,7 +93,7 @@ class MagicVerify(BaseModel):
 
 @router.post("/magic/request")
 def magic_request(body: MagicRequest, db: Session = Depends(get_db)):
-    return am.request_magic_link(db, body.email)
+    return am.request_magic_link(db, body.email, body.redirect)
 
 
 @router.post("/magic/verify")
@@ -119,7 +120,7 @@ class GoogleDemoBody(BaseModel):
 @router.post("/google/demo")
 def google_demo(body: GoogleDemoBody, db: Session = Depends(get_db)):
     """Simulated Google account chooser – only when no real client id is configured."""
-    if not settings.demo_mode or settings.google_client_id:
+    if not settings.demo_mode or settings.google_client_ids:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not available")
     email = am.normalize_email(body.email)
     sub = "demo-" + hashlib.sha256(email.encode()).hexdigest()[:20]
@@ -206,7 +207,7 @@ def onboard(body: Onboard, db: Session = Depends(get_db)):
 
     if body.role == "patient":
         if not (body.patient_name and body.patient_blood_group in BLOOD_GROUPS and body.hospital_id):
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Patient name, blood group and hospital are required")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Patient name, blood group and hospital are required")
         hospital = db.get(Hospital, body.hospital_id)
         if not hospital:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown hospital")
@@ -219,7 +220,7 @@ def onboard(body: Onboard, db: Session = Depends(get_db)):
         plan_next(db, p, date.today())
     else:
         if not (body.blood_group in BLOOD_GROUPS and body.sex in ("M", "F") and body.date_of_birth and body.weight_kg and phone):
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Blood group, sex, date of birth, weight and phone are required")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Blood group, sex, date of birth, weight and phone are required")
         donor = Donor(user_id=user.id, name=user.name, phone=phone, blood_group=body.blood_group, sex=body.sex,
                       date_of_birth=body.date_of_birth, weight_kg=body.weight_kg, verified=False,
                       lat=body.lat if body.lat is not None else 26.9124, lng=body.lng if body.lng is not None else 75.7873,

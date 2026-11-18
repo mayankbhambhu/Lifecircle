@@ -89,7 +89,7 @@ def update_cycle(patient_id: int, body: CycleSettings, user: User = Depends(Fami
         appt = plan_next(db, p, date.today())
         for uid in affected:
             notify(db, uid, "rescheduled", f"{p.name.split()[0]}'s transfusion was rescheduled",
-                   f"The cycle changed to every {p.cycle_days} days. Check your dashboard for your updated slot.", "info", "/app/donor")
+                   f"The cycle changed to every {p.cycle_days} days. Check your dashboard for your updated slot.", "info", "/donor")
     elif appt:
         appt.units_needed = p.units_per_transfusion
     db.commit()

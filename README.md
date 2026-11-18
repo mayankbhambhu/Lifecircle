@@ -1,64 +1,106 @@
 # LifeCircle
 
-**Proactive blood-donation scheduling for patients who need regular transfusions** (thalassemia major, sickle-cell disease, aplastic anaemia and others).
+**Proactive blood-donation scheduling for patients who need regular transfusions** (thalassemia major, sickle-cell disease, aplastic anaemia and others), as a **mobile app you run in Expo Go**.
 
-LifeCircle plans every transfusion ahead, rotates a family's donor circle fairly, sends reminders automatically, and when someone cancels it finds the nearest eligible donor, starting with the patient's own circle and then widening ring by ring.
+LifeCircle plans every transfusion ahead, rotates a family's donor circle fairly, and reminds donors automatically. When someone cancels, it finds the nearest eligible donor: the patient's own circle first, then a widening ring of verified donors nearby.
 
 | | |
 |---|---|
-| **Backend** | Python 3.11+, FastAPI, SQLAlchemy 2, SQLite (Postgres-ready), PyJWT |
-| **Frontend** | React 18 + Vite, Framer Motion animations, Lucide icons, mobile-first app shell with light and dark themes |
-| **Tests** | 39 pytest tests covering the algorithms, auth, RBAC, privacy leak checks, urgent escalation and stock alerts |
+| **Mobile app** (`mobile/`) | Expo SDK 58 · React Native · Expo Router tabs per role · Reanimated 4 animations · SVG radar and countdown · SecureStore sessions · light and dark mode |
+| **Backend** (`backend/`) | Python · FastAPI · SQLAlchemy 2 · SQLite (Postgres-ready) · PyJWT |
+| **Tests** | 40 pytest tests: algorithms, auth flows, role access, privacy leak checks, urgent escalation, stock alerts |
 
 ---
 
-## Quick start
+## Run it on your phone (Expo Go)
+
+You need **Python 3.10+**, **Node 20+**, and the **Expo Go** app ([iOS](https://apps.apple.com/app/expo-go/id982107779) / [Android](https://play.google.com/store/apps/details?id=host.exp.exponent)). Your phone and laptop must be on the **same Wi-Fi**.
 
 ```bash
-make install        # pip + npm
-make run            # builds the app and serves everything on http://localhost:8000
+make install
 ```
 
-For development with hot reload, use two terminals:
+Terminal 1, the API. It listens on `0.0.0.0` so your phone can reach it, and seeds demo data on first start:
 
 ```bash
-make dev-api        # FastAPI on :8000   (API docs at /docs)
-make dev-web        # Vite on :5173      (proxies /api to :8000)
+make api
 ```
 
-The demo data seeds itself on first start, with all dates relative to **today**. Run `make seed` to reset it.
-On the login page, the **one-tap demo buttons** sign in as each role. You can also use OTP with a seeded number, for example `98000 00002` (Amit, a confirmed donor); in demo mode the code appears on screen.
+Terminal 2, the app:
+
+```bash
+make app
+```
+
+Scan the QR code: with the Camera app on iPhone, or from inside Expo Go on Android. The app finds your laptop's IP from Expo automatically and calls the API on port 8000.
+
+* **The app shows "Can't reach the server"?** Check that the API is running with `--host 0.0.0.0`, that your laptop firewall allows port 8000, and that both devices are on the same network. You can also tap **Server** at the bottom of the login screen and enter `http://<laptop-ip>:8000`.
+* **Using `npx expo start --tunnel`?** The tunnel only carries the app bundle, not the API, so set the server URL yourself on the login screen, or start the app with `EXPO_PUBLIC_API_URL=http://<reachable-host>:8000`.
+* **Want the presentation demo?** Use the **one-tap demo** buttons on the login screen (patient family, donor, blood bank, hospital). Or sign in with phone OTP using `98000 00002` (Amit, a confirmed donor). In demo mode the code appears on screen.
+* **Want to reset the demo?** Tap your avatar, then **Reset demo data**, or run `make seed`.
+
+### Backend settings
 
 | Env var | Default | Purpose |
 |---|---|---|
 | `LIFECIRCLE_SECRET` | dev value | JWT and OTP hashing key. **Set this in production.** |
 | `LIFECIRCLE_DB` | `sqlite:///./lifecircle.db` | Any SQLAlchemy URL |
-| `LIFECIRCLE_DEMO` | `true` | Shows OTP codes and magic links in the UI, plus one-tap demo logins |
-| `GOOGLE_CLIENT_ID` | empty | Turns on real Google Identity Services sign-in. Without it, a simulated chooser is used in demo mode |
-| `LIFECIRCLE_FRONTEND_URL` | `http://localhost:5173` | Base URL used in magic-link emails, and the CORS origin |
+| `LIFECIRCLE_DEMO` | `true` | Shows OTP codes and magic links in the app, enables one-tap demo logins and `exp://` magic links |
+| `GOOGLE_CLIENT_IDS` | empty | Comma-separated Google OAuth client IDs whose ID tokens the API accepts |
+| `LIFECIRCLE_APP_LINK` | `lifecircle://magic` | Where emailed magic links open when the app doesn't say otherwise |
+
+### Sign-in methods inside Expo Go
+
+| Method | In Expo Go |
+|---|---|
+| **Phone OTP** | Works. The code is shown as a "demo SMS" until an SMS gateway is wired up. |
+| **Email magic link** | Works. The link opens the app (an `exp://…/--/magic` URL in Expo Go, `lifecircle://magic` in a build). In demo mode the link is also shown in-app. |
+| **Google** | The server verifies real Google ID tokens. The native Google sign-in SDK [isn't available in Expo Go](https://docs.expo.dev/guides/google-authentication/), so in Expo Go a simulated account chooser is used (demo mode only). Real Google sign-in needs a development build (`npx expo run:android` / `eas build`). |
 
 ---
 
-## What's inside
+## Project layout
 
 ```
+mobile/                       Expo Go app
+  app/                        Expo Router screens (every file is a route)
+    index.jsx                 splash → welcome / login / role home
+    welcome.jsx               4-slide story: the problem, Planned mode, Urgent mode, privacy
+    login.jsx                 one login for every role: Phone OTP · Email link · Google
+    onboarding.jsx            new users pick patient family or donor (staff are invite-only)
+    magic.jsx                 magic-link deep-link handler
+    patient/                  tabs: Overview · Circle · Rotation · Urgent
+    donor/                    tabs: Home · Alerts · Profile
+    bank/                     tabs: Queue · Daily log · Stock · Donors (+ privacy audit)
+    hospital/                 tabs: Patients · Blood stock · Urgent
+    notifications.jsx, account.jsx   modals
+  components/                 UI kit, Radar, Stock tubes, Countdown ring, Logo, Toasts
+  lib/                        API client (finds your laptop's IP), auth/session, theme
 backend/app/
-  services/
-    eligibility.py   ← donor medical pre-eligibility (age, weight, 90/120-day gap, deferral, ABO/Rh)
-    rotation.py      ← fair rotation: explainable 0-100 score, confirmed + backup, N-cycle forecast
-    geo.py           ← haversine + bounding-box pre-filter, ring escalation 5→10→25→50 km
-    scheduler.py     ← next-date maths and the T-7 / T-3 / T-1 reminder plan
-    planning.py      ← the core loop: plan → cancel/promote → remind → complete → re-plan
-    urgent.py        ← circle-first escalation, atomic first-accept-wins, re-route, fulfil from stock
-    inventory.py     ← stock status (critical/low/healthy), shortage alerts, "rally donors"
-    privacy.py       ← single place deciding what each role may see about a donor
-    auth_methods.py  ← phone OTP, email magic link, Google ID-token verification
-  security.py        ← JWT sessions + require_roles() route guard
-  routers/           ← auth · family · donor · bank · hospital · common
-  seed.py            ← the demo world (all people and organisations are fictional)
-backend/tests/       ← test_algorithms.py, test_api.py
-frontend/src/pages/  ← Landing · Login · Onboarding · PatientApp · DonorApp · BankApp · HospitalApp
-docs/PRESENTATION.md ← problem, impact, design decisions, scope, demo script
+  services/eligibility.py     donor medical pre-eligibility
+  services/rotation.py        fair rotation with an explainable 0-100 score, forecast
+  services/geo.py             haversine + bounding box, rings 5→10→25→50 km
+  services/planning.py        core loop: plan → cancel/promote → remind → complete
+  services/urgent.py          circle-first escalation, atomic first-accept-wins
+  services/inventory.py       stock status, shortage alerts, "rally donors"
+  services/privacy.py         what each role may see about a donor
+  services/auth_methods.py    OTP, magic link, Google ID-token verification
+  security.py                 JWT sessions + require_roles() guard
+docs/PRESENTATION.md          problem, impact, algorithms, privacy, scope, demo script
 ```
 
-See **[docs/PRESENTATION.md](docs/PRESENTATION.md)** for the algorithms, the privacy model, the "what this doesn't do" scope, and a 5-minute demo script.
+Checks:
+
+```bash
+make test
+```
+
+```bash
+make lint
+```
+
+```bash
+make bundle
+```
+
+`make test` runs the backend tests, `make lint` runs the Expo lint, and `make bundle` compiles the Android bundle without a phone.

@@ -61,7 +61,7 @@ def _send_alert(db: Session, req: UrgentRequest, d: Donor, *, stage: int, in_cir
     who = patient_label_for_donor(req.patient, d)
     notify(db, d.user_id, "urgent", f"Urgent: {req.blood_group} needed – {format_distance(dist)} from you",
            f"{who} needs {req.units} unit(s) at {req.blood_bank.name} by {req.needed_by:%a %d %b}. First to accept is confirmed.",
-           "critical", "/app/donor")
+           "critical", "/donor")
 
 
 def create_request(
@@ -104,12 +104,12 @@ def create_request(
 
     notify_bank_staff(db, bank_id, "urgent", f"URGENT: {patient.name} needs {patient.blood_group} by {needed_by:%d %b}",
                       f"{reason}. Circle alerted: {sent} donor(s). Approve to broadcast nearby, re-route, or fulfil from stock.",
-                      "critical", "/app/blood_bank")
+                      "critical", "/bank")
     notify_hospital_staff(db, patient.hospital_id, "urgent", f"Urgent request opened for {patient.name}",
-                          f"{units} unit(s) {patient.blood_group} by {needed_by:%d %b}. Blood bank notified.", "warning", "/app/hospital")
+                          f"{units} unit(s) {patient.blood_group} by {needed_by:%d %b}. Blood bank notified.", "warning", "/hospital")
     if source != "donor_cancellation":
         notify(db, patient.family_user_id, "urgent", "Urgent help requested",
-               f"Sent to {req.blood_bank.name}. {sent} member(s) of your circle alerted first.", "warning", "/app/patient")
+               f"Sent to {req.blood_bank.name}. {sent} member(s) of your circle alerted first.", "warning", "/patient")
     db.flush()
     if sent == 0:
         escalate(db, req)
@@ -160,7 +160,7 @@ def escalate(db: Session, req: UrgentRequest, actor: User | None = None) -> dict
 
     req.status = "no_match"
     notify_bank_staff(db, req.blood_bank_id, "urgent", f"No donor found within 50 km for {req.patient.name}",
-                      "Fulfil from stock or re-route to another blood bank.", "critical", "/app/blood_bank")
+                      "Fulfil from stock or re-route to another blood bank.", "critical", "/bank")
     db.flush()
     return {"status": "no_match", "radius_km": req.radius_km, "alerted": 0}
 
@@ -188,7 +188,7 @@ def accept(db: Session, alert: UrgentAlert) -> tuple[bool, str]:
         if other.id != alert.id and other.status == "sent":
             other.status = "closed"
             notify(db, other.donor.user_id, "urgent_closed", "Request filled – thank you",
-                   f"Another donor accepted the {req.blood_group} request. You weren't needed this time.", "success", "/app/donor")
+                   f"Another donor accepted the {req.blood_group} request. You weren't needed this time.", "success", "/donor")
     if req.appointment_id:
         db.add(Assignment(appointment_id=req.appointment_id, donor_id=donor.id, slot="confirmed", status="attending", source="urgent"))
     # Release this donor's backup slots that the donation would make them ineligible for, and refill them.
@@ -201,16 +201,16 @@ def accept(db: Session, alert: UrgentAlert) -> tuple[bool, str]:
             db.flush()
             fill_slots(db, slot.appointment)
             notify(db, slot.appointment.patient.family_user_id, "backup_changed", "Your backup donor changed",
-                   f"{short_name(donor.name)} answered an emergency elsewhere; a new backup was chosen from your circle.", "info", "/app/patient")
+                   f"{short_name(donor.name)} answered an emergency elsewhere; a new backup was chosen from your circle.", "info", "/patient")
     label = "your circle" if alert.in_circle else f"a verified donor {format_distance(alert.distance_km)} away"
     notify(db, req.patient.family_user_id, "urgent_filled", f"Donor confirmed: {short_name(donor.name)}",
-           f"{short_name(donor.name)} from {label} accepted. The blood bank will coordinate.", "success", "/app/patient")
+           f"{short_name(donor.name)} from {label} accepted. The blood bank will coordinate.", "success", "/patient")
     notify_bank_staff(db, req.blood_bank_id, "urgent_filled", f"Filled: {donor.name} for {req.patient.name}",
-                      f"{donor.blood_group} · {format_distance(alert.distance_km)} away · call {donor.phone} to book the slot.", "success", "/app/blood_bank")
+                      f"{donor.blood_group} · {format_distance(alert.distance_km)} away · call {donor.phone} to book the slot.", "success", "/bank")
     notify_hospital_staff(db, req.patient.hospital_id, "urgent_filled", f"Urgent request filled for {req.patient.name}",
-                          f"Donor {short_name(donor.name)} confirmed.", "success", "/app/hospital")
+                          f"Donor {short_name(donor.name)} confirmed.", "success", "/hospital")
     notify(db, donor.user_id, "urgent_won", "You're confirmed – thank you!",
-           f"Please reach {req.blood_bank.name} by {req.needed_by:%a %d %b}. Staff will call you.", "success", "/app/donor")
+           f"Please reach {req.blood_bank.name} by {req.needed_by:%a %d %b}. Staff will call you.", "success", "/donor")
     db.flush()
     return True, "You're confirmed! The blood bank will contact you."
 
@@ -256,9 +256,9 @@ def fulfil_from_stock(db: Session, req: UrgentRequest, actor: User) -> dict:
         if a.status == "sent":
             a.status = "closed"
             notify(db, a.donor.user_id, "urgent_closed", "Request covered – thank you",
-                   "The blood bank covered this request from stock.", "success", "/app/donor")
+                   "The blood bank covered this request from stock.", "success", "/donor")
     notify(db, req.patient.family_user_id, "urgent_filled", "Covered from blood bank stock",
-           f"{req.blood_bank.name} issued {req.units} unit(s) of {row.blood_group}.", "success", "/app/patient")
+           f"{req.blood_bank.name} issued {req.units} unit(s) of {row.blood_group}.", "success", "/patient")
     db.flush()
     return {"issued_group": row.blood_group, "units": req.units}
 
@@ -278,9 +278,9 @@ def reroute(db: Session, req: UrgentRequest, to_bank: BloodBank, note: str, acto
     if was_no_match:
         escalate(db, req, actor)  # search again around the new bank
     notify_bank_staff(db, to_bank.id, "urgent", f"Re-routed URGENT: {req.patient.name} needs {req.blood_group}",
-                      f"From {old}. {note}", "critical", "/app/blood_bank")
+                      f"From {old}. {note}", "critical", "/bank")
     notify(db, req.patient.family_user_id, "urgent", f"Request moved to {to_bank.name}",
-           note or "Re-routed for faster fulfilment.", "info", "/app/patient")
+           note or "Re-routed for faster fulfilment.", "info", "/patient")
 
 
 def cancel(db: Session, req: UrgentRequest, note: str) -> None:

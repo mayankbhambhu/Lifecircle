@@ -16,10 +16,10 @@ ALGO = "HS256"
 _bearer = HTTPBearer(auto_error=False)
 
 ROLE_HOME = {
-    "patient": "/app/patient",
-    "donor": "/app/donor",
-    "blood_bank": "/app/blood_bank",
-    "hospital": "/app/hospital",
+    "patient": "/patient",
+    "donor": "/donor",
+    "blood_bank": "/bank",
+    "hospital": "/hospital",
 }
 
 

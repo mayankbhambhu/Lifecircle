@@ -1,9 +1,0 @@
-{
-  "name": "LifeCircle",
-  "short_name": "LifeCircle",
-  "start_url": "/login",
-  "display": "standalone",
-  "background_color": "#fff7f8",
-  "theme_color": "#e11d48",
-  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
-}

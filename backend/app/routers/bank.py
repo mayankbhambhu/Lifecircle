@@ -84,7 +84,7 @@ def approve_appt(appt_id: int, body: Note, user: User = Depends(Staff), db: Sess
     if a.status != "awaiting_bank":
         raise HTTPException(409, f"Appointment is {a.status}")
     a.status, a.bank_note = "scheduled", body.note or None
-    notify(db, a.patient.family_user_id, "approved", f"Slot approved for {a.date:%d %b}", f"{a.blood_bank.name} has booked the transfusion slot.", "success", "/app/patient")
+    notify(db, a.patient.family_user_id, "approved", f"Slot approved for {a.date:%d %b}", f"{a.blood_bank.name} has booked the transfusion slot.", "success", "/patient")
     db.commit()
     return {"ok": True}
 
@@ -101,11 +101,11 @@ def reroute_appt(appt_id: int, body: Reroute, user: User = Depends(Staff), db: S
     db.flush()
     db.refresh(a)
     from ..services.notify import notify_bank_staff
-    notify_bank_staff(db, target.id, "queue", f"Re-routed planned request: {a.patient.name} on {a.date:%d %b}", a.bank_note, "info", "/app/blood_bank")
-    notify(db, a.patient.family_user_id, "rerouted", f"Transfusion moved to {target.name}", a.bank_note, "info", "/app/patient")
+    notify_bank_staff(db, target.id, "queue", f"Re-routed planned request: {a.patient.name} on {a.date:%d %b}", a.bank_note, "info", "/bank")
+    notify(db, a.patient.family_user_id, "rerouted", f"Transfusion moved to {target.name}", a.bank_note, "info", "/patient")
     for s in a.assignments:
         if s.status in ACTIVE:
-            notify(db, s.donor.user_id, "rerouted", f"Location changed: {target.name}", f"Your donation on {a.date:%d %b} is now at {target.name}.", "info", "/app/donor")
+            notify(db, s.donor.user_id, "rerouted", f"Location changed: {target.name}", f"Your donation on {a.date:%d %b} is now at {target.name}.", "info", "/donor")
     db.commit()
     return {"ok": True}
 
@@ -196,7 +196,7 @@ def verify(donor_id: int, body: Verify, user: User = Depends(Staff), db: Session
     d.verified = body.verified
     audit(db, user, "verify_donor" if body.verified else "unverify_donor", f"donor:{d.id}")
     if body.verified:
-        notify(db, d.user_id, "verified", "You're verified ✓", "You can now receive urgent alerts from patients near you.", "success", "/app/donor")
+        notify(db, d.user_id, "verified", "You're verified ✓", "You can now receive urgent alerts from patients near you.", "success", "/donor")
     db.commit()
     return {"ok": True}
 
@@ -286,11 +286,11 @@ def log_outcome(body: LogBody, user: User = Depends(Staff), db: Session = Depend
         donor.last_donation_date = body.date
         inventory.adjust(db, inventory.get_row(db, bank.id, donor.blood_group), +1)
         notify(db, donor.user_id, "thanks", "Thank you for donating today ❤",
-               "Your donation was recorded. We'll let you know when you're eligible again.", "success", "/app/donor")
+               "Your donation was recorded. We'll let you know when you're eligible again.", "success", "/donor")
     elif body.outcome == "deferred":
         donor.deferred_until = body.date + timedelta(days=body.deferral_days)
         notify(db, donor.user_id, "deferred", "Temporarily deferred",
-               f"Thanks for coming in. You can donate again after {donor.deferred_until:%d %b %Y}.", "info", "/app/donor")
+               f"Thanks for coming in. You can donate again after {donor.deferred_until:%d %b %Y}.", "info", "/donor")
     if assignment:
         assignment.status = body.outcome
         if body.outcome in ("deferred", "no_show") and assignment.slot == "confirmed" and assignment.appointment.status in UPCOMING:
