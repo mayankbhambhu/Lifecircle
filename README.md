@@ -16,9 +16,13 @@ LifeCircle plans every transfusion ahead, rotates a family's donor circle fairly
 
 You need **Python 3.10+**, **Node 20+**, and the **Expo Go** app ([iOS](https://apps.apple.com/app/expo-go/id982107779) / [Android](https://play.google.com/store/apps/details?id=host.exp.exponent)). Your phone and laptop must be on the **same Wi-Fi**.
 
+Run these from the project folder (the one containing `Makefile`, `backend/` and `mobile/`; they also work from inside `backend/` or `mobile/`):
+
 ```bash
 make install
 ```
+
+`make install` creates a private Python environment in `backend/.venv`, so it works with Homebrew Python on macOS too.
 
 Terminal 1, the API. It listens on `0.0.0.0` so your phone can reach it, and seeds demo data on first start:
 
@@ -31,6 +35,26 @@ Terminal 2, the app:
 ```bash
 make app
 ```
+
+**No `make`?** (for example on Windows) Run the same steps by hand. Setup, once:
+
+```bash
+cd backend && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt && cd ../mobile && npm install
+```
+
+Then the API, in terminal 1:
+
+```bash
+cd backend && .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+And the app, in terminal 2:
+
+```bash
+cd mobile && npx expo start
+```
+
+On Windows, use `.venv\Scripts\python` instead of `.venv/bin/python`.
 
 Scan the QR code: with the Camera app on iPhone, or from inside Expo Go on Android. The app finds your laptop's IP from Expo automatically and calls the API on port 8000.
 
