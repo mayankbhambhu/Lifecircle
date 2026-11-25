@@ -150,5 +150,5 @@ All donor data passes through one function, `privacy.donor_card(donor, viewer)`:
 ## 8. Running the tests
 
 ```bash
-cd backend && python -m pytest -q      # 40 passed
+make test        # 40 passed (on Windows: test.bat)
 ```

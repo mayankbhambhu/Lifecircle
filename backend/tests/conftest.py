@@ -1,8 +1,9 @@
 import os
 import tempfile
+from pathlib import Path
 
-_tmp = tempfile.mkdtemp()
-os.environ["LIFECIRCLE_DB"] = f"sqlite:///{_tmp}/test.db"
+_tmp = Path(tempfile.mkdtemp())
+os.environ["LIFECIRCLE_DB"] = f"sqlite:///{(_tmp / 'test.db').as_posix()}"  # forward slashes work on Windows too
 os.environ["LIFECIRCLE_DEMO"] = "true"
 
 import pytest  # noqa: E402

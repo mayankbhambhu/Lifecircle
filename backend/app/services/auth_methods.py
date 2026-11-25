@@ -56,11 +56,19 @@ def normalize_email(raw: str) -> str:
 class ConsoleSender:
     """Stand-in for an SMS gateway / email provider (Twilio, MSG91, SES, ...)."""
 
+    @staticmethod
+    def _out(text: str) -> None:
+        # The Windows console is often not UTF-8; never let a log line crash a sign-in.
+        try:
+            print(text, flush=True)
+        except UnicodeEncodeError:
+            print(text.encode("ascii", "replace").decode("ascii"), flush=True)
+
     def send_sms(self, phone: str, text: str) -> None:
-        print(f"[SMS to {phone}] {text}")
+        self._out(f"[SMS to {phone}] {text}")
 
     def send_email(self, email: str, subject: str, text: str) -> None:
-        print(f"[EMAIL to {email}] {subject}\n{text}")
+        self._out(f"[EMAIL to {email}] {subject}\n{text}")
 
 
 sender = ConsoleSender()
